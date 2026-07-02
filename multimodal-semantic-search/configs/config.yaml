@@ -1,0 +1,68 @@
+# === Multimodal Semantic Search — training / model config ===
+
+data:
+  images_dir: "data/flickr30k/images"
+  captions_file: "data/flickr30k/captions.token"     # image_name#caption_id \t caption
+  train_split_file: "data/flickr30k/splits/train.txt"
+  val_split_file: "data/flickr30k/splits/val.txt"
+  test_split_file: "data/flickr30k/splits/test.txt"
+  image_size: 224
+  captions_per_image: 5
+
+model:
+  vision:
+    backbone: "facebook/dinov2-base"
+    freeze_backbone: true
+    lora:
+      r: 8
+      alpha: 16
+      dropout: 0.05
+      target_modules: ["query", "value"]
+      n_unfrozen_blocks: 4        # only inject LoRA into the last N transformer blocks
+  text:
+    backbone: "sentence-transformers/all-mpnet-base-v2"
+    freeze_backbone: true
+    max_seq_len: 64
+    lora:
+      r: 8
+      alpha: 16
+      dropout: 0.05
+      target_modules: ["query", "value"]
+      n_unfrozen_blocks: 4
+  shared_embedding_dim: 256
+  logit_temperature_init: 0.07   # learned, clamped to [0.01, 0.5]
+
+loss:
+  type: "hard_negative_infonce"
+  hard_negative_weight: 0.5      # extra weight on hardest in-batch negative per anchor
+  memory_bank:
+    enabled: true
+    size: 8192                   # cached embeddings for offline hard-negative retrieval
+    top_k: 4                     # hard negatives pulled from memory bank per anchor
+    refresh_every_n_steps: 500
+
+training:
+  batch_size: 128
+  num_workers: 8
+  epochs: 20
+  lr: 2.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  grad_clip_norm: 1.0
+  mixed_precision: true
+  seed: 42
+  checkpoint_dir: "checkpoints"
+  log_every_n_steps: 50
+  eval_every_n_epochs: 1
+
+evaluation:
+  recall_ks: [1, 5, 10]
+  batch_size: 256
+
+indexing:
+  index_type: "hnsw"
+  hnsw_M: 32
+  hnsw_ef_construction: 200
+  hnsw_ef_search: 64
+  embedding_dim: 256
+  metric: "inner_product"          # vectors are L2-normalized -> equivalent to cosine
